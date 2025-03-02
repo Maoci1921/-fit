@@ -1,12 +1,22 @@
 import { NextResponse } from 'next/server';
-import clientPromise from '@/lib/mongodb';
-import { ObjectId } from 'mongodb';
+import connectDB from '@/lib/mongodb';
+import mongoose from 'mongoose';
+
+// 定义 Media 模型的 Schema
+const mediaSchema = new mongoose.Schema({
+  name: String,
+  type: String,
+  url: String,
+  createdAt: { type: Date, default: Date.now }
+});
+
+// 获取 Media 模型（如果已存在则使用现有的）
+const Media = mongoose.models.Media || mongoose.model('Media', mediaSchema);
 
 export async function GET() {
   try {
-    const client = await clientPromise;
-    const db = client.db('fitness-planner');
-    const media = await db.collection('media').find({}).toArray();
+    await connectDB();
+    const media = await Media.find({});
     return NextResponse.json({ media });
   } catch (error) {
     console.error('获取媒体失败:', error);
@@ -16,17 +26,12 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const client = await clientPromise;
-    const db = client.db('fitness-planner');
+    await connectDB();
     const data = await request.json();
     
-    const result = await db.collection('media').insertOne({
-      ...data,
-      _id: new ObjectId(),
-      createdAt: new Date(),
-    });
+    const newMedia = new Media(data);
+    await newMedia.save();
 
-    const newMedia = await db.collection('media').findOne({ _id: result.insertedId });
     return NextResponse.json(newMedia);
   } catch (error) {
     console.error('创建媒体失败:', error);
@@ -36,8 +41,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const client = await clientPromise;
-    const db = client.db('fitness-planner');
+    await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -45,7 +49,11 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: '缺少媒体ID' }, { status: 400 });
     }
 
-    await db.collection('media').deleteOne({ _id: new ObjectId(id) });
+    const result = await Media.findByIdAndDelete(id);
+    if (!result) {
+      return NextResponse.json({ error: '媒体不存在' }, { status: 404 });
+    }
+
     return NextResponse.json({ message: '媒体删除成功' });
   } catch (error) {
     console.error('删除媒体失败:', error);

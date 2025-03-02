@@ -1,40 +1,33 @@
 import { NextResponse } from 'next/server';
-import { MongoClient, ObjectId } from 'mongodb';
+import connectDB from '@/lib/mongodb';
+import mongoose from 'mongoose';
 
-const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
-const client = new MongoClient(uri);
+// 定义 WorkoutItem Schema
+const workoutItemSchema = new mongoose.Schema({
+  id: String,
+  name: String
+});
 
-interface WorkoutItem {
-  id: string;
-  name: string;
-}
+// 定义 WorkoutDay Schema
+const workoutDaySchema = new mongoose.Schema({
+  id: String,
+  name: String,
+  items: [workoutItemSchema]
+});
 
-interface WorkoutDay {
-  id: string;
-  name: string;
-  items: WorkoutItem[];
-}
+// 定义 User Schema
+const userSchema = new mongoose.Schema({
+  name: String,
+  workoutDays: [workoutDaySchema]
+});
 
-interface User {
-  _id?: ObjectId;
-  name: string;
-  workoutDays: WorkoutDay[];
-}
-
-async function connectDB() {
-  try {
-    await client.connect();
-    return client.db('fitness-planner');
-  } catch (error) {
-    console.error('数据库连接失败:', error);
-    throw new Error('数据库连接失败');
-  }
-}
+// 获取 User 模型（如果已存在则使用现有的）
+const User = mongoose.models.User || mongoose.model('User', userSchema);
 
 export async function GET() {
   try {
-    const db = await connectDB();
-    const users = await db.collection('users').find().toArray();
+    await connectDB();
+    const users = await User.find();
     return NextResponse.json({ users });
   } catch (error) {
     console.error('获取用户失败:', error);
@@ -44,16 +37,13 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const userData: Omit<User, '_id'> = await request.json();
-    if (!userData.name || !Array.isArray(userData.workoutDays)) {
-      return NextResponse.json({ error: '无效的用户数据' }, { status: 400 });
-    }
-
-    const db = await connectDB();
-    const result = await db.collection('users').insertOne(userData);
-    const savedUser = await db.collection('users').findOne({ _id: result.insertedId });
+    await connectDB();
+    const userData = await request.json();
     
-    return NextResponse.json(savedUser);
+    const newUser = new User(userData);
+    await newUser.save();
+
+    return NextResponse.json(newUser);
   } catch (error) {
     console.error('创建用户失败:', error);
     return NextResponse.json({ error: '创建用户失败' }, { status: 500 });
@@ -62,25 +52,24 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const db = await connectDB();
-    const user = await request.json();
+    await connectDB();
+    const userData = await request.json();
     
-    if (!user._id) {
+    if (!userData._id) {
       return NextResponse.json({ error: '无效的用户ID' }, { status: 400 });
     }
 
-    const { _id, ...updateData } = user;
-    const result = await db.collection('users').findOneAndUpdate(
-      { _id: new ObjectId(_id) },
-      { $set: updateData },
-      { returnDocument: 'after' }
+    const updatedUser = await User.findByIdAndUpdate(
+      userData._id,
+      { $set: userData },
+      { new: true }
     );
 
-    if (!result) {
+    if (!updatedUser) {
       return NextResponse.json({ error: '用户不存在' }, { status: 404 });
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json(updatedUser);
   } catch (error) {
     console.error('更新用户失败:', error);
     return NextResponse.json({ error: '更新用户失败' }, { status: 500 });
@@ -89,6 +78,7 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    await connectDB();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     
@@ -96,10 +86,9 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: '无效的用户ID' }, { status: 400 });
     }
 
-    const db = await connectDB();
-    const result = await db.collection('users').deleteOne({ _id: new ObjectId(id) });
-
-    if (result.deletedCount === 0) {
+    const deletedUser = await User.findByIdAndDelete(id);
+    
+    if (!deletedUser) {
       return NextResponse.json({ error: '用户不存在' }, { status: 404 });
     }
 
