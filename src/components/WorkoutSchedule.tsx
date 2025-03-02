@@ -1,17 +1,24 @@
 import React, { useState } from 'react';
-import { Exercise, WorkoutPlan, WorkoutActions } from '../types/workout';
+import { Exercise, WorkoutPlan } from '../types/workout';
 import { VideoPlayer } from './VideoPlayer';
-import { PencilIcon, PlusIcon, TrashIcon } from '@heroicons/react/20/solid';
+import { PencilIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface WorkoutScheduleProps {
   workoutPlan: WorkoutPlan;
-  userName: string;
-  actions: WorkoutActions;
+  onUpdateUserName: (newName: string) => void;
 }
 
-export const WorkoutSchedule: React.FC<WorkoutScheduleProps> = ({ workoutPlan, userName, actions }) => {
+export default function WorkoutSchedule({ workoutPlan }: WorkoutScheduleProps) {
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
-  const [editingName, setEditingName] = useState<string | null>(null);
+
+  const handleNameEdit = (dayIndex: number, exerciseIndex: number) => {
+    const exercise = workoutPlan.days[dayIndex].exercises[exerciseIndex];
+    const newName = window.prompt('输入新的练习名称:', exercise.name);
+    if (newName && newName !== exercise.name) {
+      // 处理名称更新
+      console.log('更新练习名称:', newName);
+    }
+  };
 
   const handleVideoUpload = (exerciseId: string, videoUrl: string) => {
     setSelectedExercise(prev => 
@@ -19,22 +26,11 @@ export const WorkoutSchedule: React.FC<WorkoutScheduleProps> = ({ workoutPlan, u
     );
   };
 
-  const handleNameEdit = (currentName: string, onSave: (name: string) => void) => {
-    setEditingName(currentName);
-    const newName = window.prompt('输入新名称:', currentName);
-    if (newName && newName !== currentName) {
-      onSave(newName);
-    }
-    setEditingName(null);
-  };
-
   const handleDelete = (dayIndex: number, exerciseIndex: number, exerciseName: string) => {
     const confirmed = window.confirm(`确定要删除"${exerciseName}"吗？`);
     if (confirmed) {
-      actions.removeExercise(dayIndex, exerciseIndex);
-      if (selectedExercise?.id === workoutPlan.days[dayIndex].exercises[exerciseIndex].id) {
-        setSelectedExercise(null);
-      }
+      // 处理删除逻辑
+      console.log('删除练习:', dayIndex, exerciseIndex, exerciseName);
     }
   };
 
@@ -43,61 +39,36 @@ export const WorkoutSchedule: React.FC<WorkoutScheduleProps> = ({ workoutPlan, u
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="space-y-6">
           {workoutPlan.days.map((day, dayIndex) => (
-            <div key={day.day} className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold">{day.day}</h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleNameEdit(day.day, (name) => actions.updateDayName(dayIndex, name))}
-                    className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <PencilIcon className="w-5 h-5 opacity-20 hover:opacity-60" />
-                  </button>
-                  <button
-                    onClick={() => actions.addExercise(dayIndex)}
-                    className="p-1 text-blue-400 hover:text-blue-600 transition-colors"
-                  >
-                    <PlusIcon className="w-5 h-5 opacity-20 hover:opacity-60" />
-                  </button>
-                </div>
-              </div>
+            <div key={dayIndex} className="bg-white rounded-lg shadow-md p-6">
+              <h3 className="text-xl font-semibold mb-4">{day.day}</h3>
               <div className="space-y-4">
                 {day.exercises.map((exercise, exerciseIndex) => (
                   <div
-                    key={exercise.id}
-                    className={`p-4 rounded-lg cursor-pointer transition-colors ${
-                      selectedExercise?.id === exercise.id
-                        ? 'bg-blue-100'
-                        : 'bg-gray-50 hover:bg-gray-100'
-                    }`}
+                    key={exerciseIndex}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
                   >
-                    <div className="flex items-center justify-between">
-                      <div
-                        className="flex-grow"
-                        onClick={() => setSelectedExercise(exercise)}
+                    <div className="flex items-center gap-4">
+                      <span className="font-medium">{exercise.name}</span>
+                      <button
+                        onClick={() => handleNameEdit(dayIndex, exerciseIndex)}
+                        className="p-1 hover:bg-gray-200 rounded"
                       >
-                        <h3 className="font-medium">{exercise.name}</h3>
-                        <p className="text-gray-600">
-                          {exercise.sets} 组 × {exercise.reps} {exercise.reps > 30 ? '秒' : '次'}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleNameEdit(
-                            exercise.name,
-                            (name) => actions.updateExerciseName(dayIndex, exerciseIndex, name)
-                          )}
-                          className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                        >
-                          <PencilIcon className="w-5 h-5 opacity-20 hover:opacity-60" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(dayIndex, exerciseIndex, exercise.name)}
-                          className="p-1 text-red-400 hover:text-red-600 transition-colors"
-                        >
-                          <TrashIcon className="w-5 h-5 opacity-20 hover:opacity-60" />
-                        </button>
-                      </div>
+                        <PencilIcon className="w-4 h-4 text-gray-600" />
+                      </button>
+                    </div>
+                    {selectedExercise?.id === exercise.id && (
+                      <VideoPlayer 
+                        videoUrl={exercise.videoUrl} 
+                        onVideoUpload={() => {}} 
+                      />
+                    )}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedExercise(exercise)}
+                        className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                      >
+                        查看视频
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -120,10 +91,7 @@ export const WorkoutSchedule: React.FC<WorkoutScheduleProps> = ({ workoutPlan, u
                     const exerciseIndex = workoutPlan.days[dayIndex].exercises.findIndex(
                       e => e.id === selectedExercise.id
                     );
-                    handleNameEdit(
-                      selectedExercise.name,
-                      (name) => actions.updateExerciseName(dayIndex, exerciseIndex, name)
-                    );
+                    handleNameEdit(dayIndex, exerciseIndex);
                   }}
                   className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
                 >
@@ -147,4 +115,4 @@ export const WorkoutSchedule: React.FC<WorkoutScheduleProps> = ({ workoutPlan, u
       </div>
     </div>
   );
-}; 
+} 
