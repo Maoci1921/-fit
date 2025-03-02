@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 
 interface VideoPlayerProps {
   videoUrl?: string;
-  onVideoUpload: (url: string) => void;
+  onVideoUpload?: (url: string) => void;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ videoUrl, onVideoUpload }) => {
@@ -11,7 +11,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ videoUrl, onVideoUploa
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
+    if (file && onVideoUpload) {
       const url = URL.createObjectURL(file);
       setLocalVideoUrl(url);
       onVideoUpload(url);
@@ -26,7 +26,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ videoUrl, onVideoUploa
           controls
           src={localVideoUrl}
         />
-      ) : (
+      ) : onVideoUpload ? (
         <div className="absolute inset-0 flex items-center justify-center">
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -34,6 +34,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ videoUrl, onVideoUploa
           >
             上传视频
           </button>
+        </div>
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center text-gray-500">
+          暂无视频
         </div>
       )}
       <input

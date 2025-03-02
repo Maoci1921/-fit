@@ -9,8 +9,10 @@ interface WorkoutScheduleProps {
 
 export default function WorkoutSchedule({ workoutPlan }: WorkoutScheduleProps) {
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
+  const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
 
   const handleNameEdit = (dayIndex: number, exerciseIndex: number) => {
+    if (!isLocalhost) return;
     const exercise = workoutPlan.days[dayIndex].exercises[exerciseIndex];
     const newName = window.prompt('输入新的练习名称:', exercise.name);
     if (newName && newName !== exercise.name) {
@@ -19,6 +21,7 @@ export default function WorkoutSchedule({ workoutPlan }: WorkoutScheduleProps) {
   };
 
   const handleVideoUpload = (exerciseId: string, videoUrl: string) => {
+    if (!isLocalhost) return;
     setSelectedExercise(prev => 
       prev?.id === exerciseId ? { ...prev, videoUrl } : prev
     );
@@ -39,17 +42,19 @@ export default function WorkoutSchedule({ workoutPlan }: WorkoutScheduleProps) {
                   >
                     <div className="flex items-center gap-4">
                       <span className="font-medium">{exercise.name}</span>
-                      <button
-                        onClick={() => handleNameEdit(dayIndex, exerciseIndex)}
-                        className="p-1 hover:bg-gray-200 rounded"
-                      >
-                        <PencilIcon className="w-4 h-4 text-gray-600" />
-                      </button>
+                      {isLocalhost && (
+                        <button
+                          onClick={() => handleNameEdit(dayIndex, exerciseIndex)}
+                          className="p-1 hover:bg-gray-200 rounded"
+                        >
+                          <PencilIcon className="w-4 h-4 text-gray-600" />
+                        </button>
+                      )}
                     </div>
                     {selectedExercise?.id === exercise.id && (
                       <VideoPlayer 
                         videoUrl={exercise.videoUrl} 
-                        onVideoUpload={() => {}} 
+                        onVideoUpload={isLocalhost ? () => {} : undefined} 
                       />
                     )}
                     <div className="flex items-center gap-2">
@@ -72,7 +77,7 @@ export default function WorkoutSchedule({ workoutPlan }: WorkoutScheduleProps) {
               <h2 className="text-xl font-semibold">
                 {selectedExercise ? selectedExercise.name : '选择动作查看视频'}
               </h2>
-              {selectedExercise && (
+              {isLocalhost && selectedExercise && (
                 <button
                   onClick={() => {
                     const dayIndex = workoutPlan.days.findIndex(day =>
@@ -91,7 +96,7 @@ export default function WorkoutSchedule({ workoutPlan }: WorkoutScheduleProps) {
             </div>
             <VideoPlayer
               videoUrl={selectedExercise?.videoUrl}
-              onVideoUpload={(url) => selectedExercise && handleVideoUpload(selectedExercise.id, url)}
+              onVideoUpload={isLocalhost && selectedExercise ? (url) => handleVideoUpload(selectedExercise.id, url) : undefined}
             />
             {selectedExercise && (
               <div className="mt-4">
