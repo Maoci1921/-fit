@@ -5,7 +5,6 @@ import { PencilIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface WorkoutScheduleProps {
   workoutPlan: WorkoutPlan;
-  onUpdateUserName: (newName: string) => void;
 }
 
 export default function WorkoutSchedule({ workoutPlan }: WorkoutScheduleProps) {
