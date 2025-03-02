@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Exercise, WorkoutPlan } from '../types/workout';
 import { VideoPlayer } from './VideoPlayer';
-import { PencilIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { PencilIcon } from '@heroicons/react/24/outline';
 
 interface WorkoutScheduleProps {
   workoutPlan: WorkoutPlan;
@@ -14,7 +14,6 @@ export default function WorkoutSchedule({ workoutPlan }: WorkoutScheduleProps) {
     const exercise = workoutPlan.days[dayIndex].exercises[exerciseIndex];
     const newName = window.prompt('输入新的练习名称:', exercise.name);
     if (newName && newName !== exercise.name) {
-      // 处理名称更新
       console.log('更新练习名称:', newName);
     }
   };
@@ -23,14 +22,6 @@ export default function WorkoutSchedule({ workoutPlan }: WorkoutScheduleProps) {
     setSelectedExercise(prev => 
       prev?.id === exerciseId ? { ...prev, videoUrl } : prev
     );
-  };
-
-  const handleDelete = (dayIndex: number, exerciseIndex: number, exerciseName: string) => {
-    const confirmed = window.confirm(`确定要删除"${exerciseName}"吗？`);
-    if (confirmed) {
-      // 处理删除逻辑
-      console.log('删除练习:', dayIndex, exerciseIndex, exerciseName);
-    }
   };
 
   return (
