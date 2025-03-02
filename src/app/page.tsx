@@ -113,55 +113,64 @@ export default function HomePage() {
     setIsClient(true);
   }, []);
 
-  const [users, setUsers] = useState<User[]>([
-    {
-      id: '1',
-      name: '用户1',
-      workoutDays: [
-        { id: '1', name: '星期一', items: [] },
-        { id: '2', name: '星期二', items: [] },
-        { id: '3', name: '星期三', items: [] },
-        { id: '4', name: '星期四', items: [] },
-        { id: '5', name: '星期五', items: [] },
-        { id: '6', name: '星期六', items: [] },
-        { id: '7', name: '星期日', items: [] },
-      ],
-    },
-  ]);
+  const defaultUser = {
+    id: '1',
+    name: '用户1',
+    workoutDays: [
+      { id: '1', name: '星期一', items: [] },
+      { id: '2', name: '星期二', items: [] },
+      { id: '3', name: '星期三', items: [] },
+      { id: '4', name: '星期四', items: [] },
+      { id: '5', name: '星期五', items: [] },
+      { id: '6', name: '星期六', items: [] },
+      { id: '7', name: '星期日', items: [] },
+    ],
+  };
 
-  useEffect(() => {
-    if (isClient) {
+  const [users, setUsers] = useState<User[]>(() => {
+    if (typeof window !== 'undefined') {
       const savedUsers = localStorage.getItem('fitness-users');
       if (savedUsers) {
-        setUsers(JSON.parse(savedUsers));
+        return JSON.parse(savedUsers);
       }
     }
-  }, [isClient]);
-  
-  const [selectedUser, setSelectedUser] = useState<string>('1');
+    return [defaultUser];
+  });
 
-  useEffect(() => {
-    if (isClient) {
+  const [selectedUser, setSelectedUser] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
       const savedSelectedUser = localStorage.getItem('fitness-selected-user');
       if (savedSelectedUser) {
-        setSelectedUser(savedSelectedUser);
+        return savedSelectedUser;
       }
     }
-  }, [isClient]);
+    return '1';
+  });
 
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  
-  useEffect(() => {
-    if (isClient) {
-      const isAuth = sessionStorage.getItem('fitness-authenticated') === 'true';
-      setIsAuthenticated(isAuth);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('fitness-authenticated') === 'true';
     }
-  }, [isClient]);
+    return false;
+  });
 
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [editingItem, setEditingItem] = useState<{ dayId: string; itemId: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<'video' | 'image'>('video');
+  const [selectedItem, setSelectedItem] = useState<{ dayId: string; itemId: string } | null>(() => {
+    if (typeof window !== 'undefined') {
+      const savedSelectedItem = localStorage.getItem('fitness-selected-item');
+      return savedSelectedItem ? JSON.parse(savedSelectedItem) : null;
+    }
+    return null;
+  });
+  const [activeTab, setActiveTab] = useState<'video' | 'image'>(() => {
+    if (typeof window !== 'undefined') {
+      const savedActiveTab = localStorage.getItem('fitness-active-tab');
+      return (savedActiveTab as 'video' | 'image') || 'video';
+    }
+    return 'video';
+  });
   const [media, setMedia] = useState<Media[]>(() => {
     // 从 localStorage 读取媒体数据
     const savedMedia = localStorage.getItem('fitness-media');
@@ -177,10 +186,38 @@ export default function HomePage() {
     password: '',
     error: ''
   });
-  const [selectedItem, setSelectedItem] = useState<{ dayId: string; itemId: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
   
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [currentVideoIndex, setCurrentVideoIndex] = useState<number>(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.touches[0].clientX);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent, videos: Media[]) => {
+    if (touchStart === null) return;
+    
+    const touchEnd = e.changedTouches[0].clientX;
+    const diff = touchStart - touchEnd;
+
+    // 如果滑动距离大于50像素，则触发切换
+    if (Math.abs(diff) > 50) {
+      if (diff > 0) {
+        // 向左滑，播放下一个视频
+        const nextIndex = (currentVideoIndex + 1) % videos.length;
+        setCurrentVideoIndex(nextIndex);
+      } else {
+        // 向右滑，播放上一个视频
+        const prevIndex = (currentVideoIndex - 1 + videos.length) % videos.length;
+        setCurrentVideoIndex(prevIndex);
+      }
+    }
+    setTouchStart(null);
+  };
+
   // 修改媒体数据初始化
   useEffect(() => {
     getAllMediaFromDB().then((mediaData) => {
@@ -196,6 +233,20 @@ export default function HomePage() {
   useEffect(() => {
     localStorage.setItem('fitness-selected-user', selectedUser);
   }, [selectedUser]);
+
+  // 添加 selectedItem 的保存
+  useEffect(() => {
+    if (selectedItem) {
+      localStorage.setItem('fitness-selected-item', JSON.stringify(selectedItem));
+    } else {
+      localStorage.removeItem('fitness-selected-item');
+    }
+  }, [selectedItem]);
+
+  // 添加 activeTab 的保存
+  useEffect(() => {
+    localStorage.setItem('fitness-active-tab', activeTab);
+  }, [activeTab]);
 
   // 修改媒体删除函数
   const deleteMedia = async (id: string) => {
@@ -213,26 +264,35 @@ export default function HomePage() {
 
     try {
       for (const file of filesToProcess) {
-        if (activeTab === 'image') {
+        // 检查文件类型
+        const isImage = file.type.startsWith('image/');
+        const isVideo = file.type.startsWith('video/');
+
+        if ((activeTab === 'image' && !isImage) || (activeTab === 'video' && !isVideo)) {
+          alert(`请选择正确的文件类型：${activeTab === 'image' ? '图片' : '视频'}`);
+          return;
+        }
+
+        if (isImage) {
           const compressedDataUrl = await compressImage(file);
           const newMedia: Media = {
             id: Date.now().toString(),
             userId: selectedUser,
             itemId: selectedItem.itemId,
-            type: activeTab,
+            type: 'image',
             url: compressedDataUrl,
             thumbnail: compressedDataUrl,
           };
           await saveMediaToDB(newMedia);
           setMedia(prev => [...prev, newMedia]);
-        } else {
+        } else if (isVideo) {
           const reader = new FileReader();
           reader.onload = async (e) => {
             const newMedia: Media = {
               id: Date.now().toString(),
               userId: selectedUser,
               itemId: selectedItem.itemId,
-              type: activeTab,
+              type: 'video',
               url: e.target?.result as string,
             };
             await saveMediaToDB(newMedia);
@@ -262,14 +322,26 @@ export default function HomePage() {
         { id: '7', name: '星期日', items: [] },
       ],
     };
-    setUsers([...users, newUser]);
+    const newUsers = [...users, newUser];
+    setUsers(newUsers);
+    localStorage.setItem('fitness-users', JSON.stringify(newUsers));
   };
 
   const deleteUser = (userId: string) => {
-    setUsers(users.filter(user => user.id !== userId));
+    const newUsers = users.filter(user => user.id !== userId);
+    setUsers(newUsers);
+    localStorage.setItem('fitness-users', JSON.stringify(newUsers));
+    
+    // 如果删除的是当前选中的用户，切换到第一个用户
     if (selectedUser === userId) {
-      setSelectedUser(users[0].id);
+      setSelectedUser(newUsers[0].id);
+      localStorage.setItem('fitness-selected-user', newUsers[0].id);
+      // 清除选中的训练项目
+      setSelectedItem(null);
+      localStorage.removeItem('fitness-selected-item');
     }
+    
+    setDeleteUserConfirm(null);
   };
 
   const startEditingUser = (userId: string, name: string) => {
@@ -279,16 +351,18 @@ export default function HomePage() {
 
   const saveUserEdit = () => {
     if (!editingUser) return;
-    setUsers(users.map(user => 
+    const newUsers = users.map(user => 
       user.id === editingUser ? { ...user, name: editingName } : user
-    ));
+    );
+    setUsers(newUsers);
+    localStorage.setItem('fitness-users', JSON.stringify(newUsers));
     setEditingUser(null);
     setEditingName('');
   };
 
   // 训练日管理功能
   const addWorkoutItem = (dayId: string) => {
-    setUsers(users.map(user => {
+    const newUsers = users.map(user => {
       if (user.id === selectedUser) {
         return {
           ...user,
@@ -304,12 +378,14 @@ export default function HomePage() {
         };
       }
       return user;
-    }));
+    });
+    setUsers(newUsers);
+    localStorage.setItem('fitness-users', JSON.stringify(newUsers));
   };
 
   // 修改删除训练项目的函数
   const deleteWorkoutItem = (dayId: string, itemId: string) => {
-    setUsers(users.map(user => {
+    const newUsers = users.map(user => {
       if (user.id === selectedUser) {
         return {
           ...user,
@@ -325,7 +401,16 @@ export default function HomePage() {
         };
       }
       return user;
-    }));
+    });
+    setUsers(newUsers);
+    localStorage.setItem('fitness-users', JSON.stringify(newUsers));
+    
+    // 如果删除的是当前选中的项目，清除选中状态
+    if (selectedItem?.dayId === dayId && selectedItem?.itemId === itemId) {
+      setSelectedItem(null);
+      localStorage.removeItem('fitness-selected-item');
+    }
+    
     setDeleteConfirm(null);
   };
 
@@ -535,7 +620,7 @@ export default function HomePage() {
                           value={editingName}
                           onChange={(e) => setEditingName(e.target.value)}
                           onBlur={() => {
-                            setUsers(users.map(u => {
+                            const newUsers = users.map(u => {
                               if (u.id === selectedUser) {
                                 return {
                                   ...u,
@@ -553,7 +638,9 @@ export default function HomePage() {
                                 };
                               }
                               return u;
-                            }));
+                            });
+                            setUsers(newUsers);
+                            localStorage.setItem('fitness-users', JSON.stringify(newUsers));
                             setEditingItem(null);
                             setEditingName('');
                           }}
@@ -599,7 +686,10 @@ export default function HomePage() {
             <>
               <div className="mb-8 flex gap-4">
                 <button
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => {
+                    setActiveTab('video');
+                    fileInputRef.current?.click();
+                  }}
                   className="flex items-center px-6 py-3 text-sm font-medium text-white bg-gradient-to-r from-orange-600 to-amber-500 rounded-full hover:shadow-lg hover:shadow-orange-500/20 transition-all duration-300"
                 >
                   <VideoCameraIcon className="w-5 h-5 mr-2" />
@@ -608,7 +698,7 @@ export default function HomePage() {
                 <button
                   onClick={() => {
                     setActiveTab('image');
-                    fileInputRef.current?.click();
+                    imageFileInputRef.current?.click();
                   }}
                   className="flex items-center px-6 py-3 text-sm font-medium text-white bg-gradient-to-r from-orange-600 to-amber-500 rounded-full hover:shadow-lg hover:shadow-orange-500/20 transition-all duration-300"
                 >
@@ -619,35 +709,89 @@ export default function HomePage() {
                   type="file"
                   ref={fileInputRef}
                   className="hidden"
-                  accept={activeTab === 'image' ? 'image/*' : 'video/*'}
-                  multiple={activeTab === 'image'}
+                  accept="video/*"
                   onChange={handleFileUpload}
+                  onClick={(e) => {
+                    // 清除文件选择，这样可以重复选择同一个文件
+                    (e.target as HTMLInputElement).value = '';
+                  }}
+                />
+                <input
+                  type="file"
+                  ref={imageFileInputRef}
+                  className="hidden"
+                  accept="image/*"
+                  multiple
+                  onChange={handleFileUpload}
+                  onClick={(e) => {
+                    // 清除文件选择，这样可以重复选择同一个文件
+                    (e.target as HTMLInputElement).value = '';
+                  }}
                 />
               </div>
 
               {/* 视频区域 */}
               <div className="mb-8">
                 <h3 className="text-lg font-medium text-gray-800 mb-4">视频</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  {media
-                    .filter(item => item.type === 'video' && item.userId === selectedUser && item.itemId === selectedItem.itemId)
-                    .map((item) => (
+                <div className="grid grid-cols-1 gap-4">
+                  {(() => {
+                    const videos = media.filter(
+                      item => item.type === 'video' && 
+                      item.userId === selectedUser && 
+                      item.itemId === selectedItem.itemId
+                    );
+                    return videos.length > 0 ? (
                       <div
-                        key={item.id}
+                        key={videos[currentVideoIndex].id}
                         className="relative aspect-video rounded-2xl overflow-hidden cursor-pointer group shadow-lg"
+                        onTouchStart={handleTouchStart}
+                        onTouchEnd={(e) => handleTouchEnd(e, videos)}
                       >
-                        <video src={item.url} className="w-full h-full object-cover" controls />
+                        <video
+                          src={videos[currentVideoIndex].url}
+                          className="w-full h-full object-cover"
+                          controls
+                          controlsList="nodownload nopictureinpicture noplaybackrate"
+                          muted
+                          playsInline
+                          disablePictureInPicture
+                        />
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setDeleteMediaConfirm({ id: item.id, type: item.type });
+                            setDeleteMediaConfirm({ id: videos[currentVideoIndex].id, type: 'video' });
                           }}
                           className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-black/70"
                         >
                           <TrashIcon className="w-4 h-4 text-white" />
                         </button>
+                        {videos.length > 1 && (
+                          <>
+                            <button
+                              className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-black/70"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const prevIndex = (currentVideoIndex - 1 + videos.length) % videos.length;
+                                setCurrentVideoIndex(prevIndex);
+                              }}
+                            >
+                              <ChevronLeftIcon className="w-6 h-6 text-white" />
+                            </button>
+                            <button
+                              className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-black/70"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const nextIndex = (currentVideoIndex + 1) % videos.length;
+                                setCurrentVideoIndex(nextIndex);
+                              }}
+                            >
+                              <ChevronRightIcon className="w-6 h-6 text-white" />
+                            </button>
+                          </>
+                        )}
                       </div>
-                    ))}
+                    ) : null;
+                  })()}
                 </div>
               </div>
 
