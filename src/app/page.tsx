@@ -15,6 +15,7 @@ interface WorkoutDay {
 }
 
 interface User {
+  _id: string;
   id: string;
   name: string;
   workoutDays: WorkoutDay[];
@@ -127,12 +128,8 @@ export default function HomePage() {
     ],
   };
 
-  const [users, setUsers] = useState<User[]>(() => {
-    if (typeof window === 'undefined') return [defaultUser];
-    const savedUsers = localStorage.getItem('fitness-users');
-    return savedUsers ? JSON.parse(savedUsers) : [defaultUser];
-  });
-
+  const [users, setUsers] = useState<User[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [selectedUser, setSelectedUser] = useState<string>(() => {
     if (typeof window === 'undefined') return '1';
     const savedSelectedUser = localStorage.getItem('fitness-selected-user');
@@ -147,21 +144,9 @@ export default function HomePage() {
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [editingItem, setEditingItem] = useState<{ dayId: string; itemId: string } | null>(null);
-  const [selectedItem, setSelectedItem] = useState<{ dayId: string; itemId: string } | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const savedSelectedItem = localStorage.getItem('fitness-selected-item');
-    return savedSelectedItem ? JSON.parse(savedSelectedItem) : null;
-  });
-  const [activeTab, setActiveTab] = useState<'video' | 'image'>(() => {
-    if (typeof window === 'undefined') return 'video';
-    const savedActiveTab = localStorage.getItem('fitness-active-tab');
-    return (savedActiveTab as 'video' | 'image') || 'video';
-  });
-  const [media, setMedia] = useState<Media[]>(() => {
-    if (typeof window === 'undefined') return [];
-    const savedMedia = localStorage.getItem('fitness-media');
-    return savedMedia ? JSON.parse(savedMedia) : [];
-  });
+  const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'video' | 'image'>('video');
+  const [media, setMedia] = useState<Media[]>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null);
   const [deleteMediaConfirm, setDeleteMediaConfirm] = useState<DeleteMediaConfirm | null>(null);
@@ -204,23 +189,72 @@ export default function HomePage() {
     setTouchStart(null);
   };
 
-  // 修改媒体数据初始化
   useEffect(() => {
-    getAllMediaFromDB().then((mediaData) => {
-      setMedia(mediaData as Media[]);
-    });
+    const initializeUsers = async () => {
+      try {
+        const response = await fetch('/api/users');
+        const data = await response.json();
+        
+        const defaultWorkoutDays = [
+          { id: '1', name: '星期一', items: [] },
+          { id: '2', name: '星期二', items: [] },
+          { id: '3', name: '星期三', items: [] },
+          { id: '4', name: '星期四', items: [] },
+          { id: '5', name: '星期五', items: [] }
+        ];
+
+        if (data.users && data.users.length > 0) {
+          const usersWithWorkoutDays = data.users.map((user: any) => ({
+            ...user,
+            workoutDays: user.workoutDays || defaultWorkoutDays
+          }));
+          setUsers(usersWithWorkoutDays);
+          setCurrentUser(usersWithWorkoutDays[0]);
+          setSelectedUser(usersWithWorkoutDays[0]._id);
+        } else {
+          // 如果没有用户，创建一个默认用户
+          const defaultUser = {
+            name: '默认用户',
+            workoutDays: defaultWorkoutDays
+          };
+
+          const response = await fetch('/api/users', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(defaultUser),
+          });
+
+          const newUser = await response.json();
+          setUsers([newUser]);
+          setCurrentUser(newUser);
+          setSelectedUser(newUser._id);
+        }
+
+        // 初始化媒体数据
+        const mediaResponse = await fetch('/api/media');
+        const mediaData = await mediaResponse.json();
+        setMedia(mediaData.media || []);
+      } catch (error) {
+        console.error('初始化数据失败:', error);
+      }
+    };
+
+    initializeUsers();
   }, []);
 
-  // 删除原有的媒体数据 localStorage 保存
   useEffect(() => {
-    localStorage.setItem('fitness-users', JSON.stringify(users));
-  }, [users]);
+    const selectedUserData = users.find(user => user._id === selectedUser);
+    if (selectedUserData) {
+      setCurrentUser(selectedUserData);
+    }
+  }, [selectedUser, users]);
 
   useEffect(() => {
     localStorage.setItem('fitness-selected-user', selectedUser);
   }, [selectedUser]);
 
-  // 添加 selectedItem 的保存
   useEffect(() => {
     if (selectedItem) {
       localStorage.setItem('fitness-selected-item', JSON.stringify(selectedItem));
@@ -229,19 +263,21 @@ export default function HomePage() {
     }
   }, [selectedItem]);
 
-  // 添加 activeTab 的保存
   useEffect(() => {
     localStorage.setItem('fitness-active-tab', activeTab);
   }, [activeTab]);
 
-  // 修改媒体删除函数
   const deleteMedia = async (id: string) => {
-    await deleteMediaFromDB(id);
+    await fetch('/api/media', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+
     setMedia(media.filter(m => m.id !== id));
     setDeleteMediaConfirm(null);
   };
 
-  // 修改文件上传处理函数
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || !selectedItem) return;
@@ -250,7 +286,6 @@ export default function HomePage() {
 
     try {
       for (const file of filesToProcess) {
-        // 检查文件类型
         const isImage = file.type.startsWith('image/');
         const isVideo = file.type.startsWith('video/');
 
@@ -261,28 +296,40 @@ export default function HomePage() {
 
         if (isImage) {
           const compressedDataUrl = await compressImage(file);
-          const newMedia: Media = {
+          const newMedia = {
             id: Date.now().toString(),
             userId: selectedUser,
-            itemId: selectedItem.itemId,
+            itemId: selectedItem,
             type: 'image',
             url: compressedDataUrl,
             thumbnail: compressedDataUrl,
           };
-          await saveMediaToDB(newMedia);
-          setMedia(prev => [...prev, newMedia]);
+
+          const response = await fetch('/api/media', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newMedia),
+          });
+          const savedMedia = await response.json();
+          setMedia(prev => [...prev, savedMedia]);
         } else if (isVideo) {
           const reader = new FileReader();
           reader.onload = async (e) => {
-            const newMedia: Media = {
+            const newMedia = {
               id: Date.now().toString(),
               userId: selectedUser,
-              itemId: selectedItem.itemId,
+              itemId: selectedItem,
               type: 'video',
               url: e.target?.result as string,
             };
-            await saveMediaToDB(newMedia);
-            setMedia(prev => [...prev, newMedia]);
+
+            const response = await fetch('/api/media', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(newMedia),
+            });
+            const savedMedia = await response.json();
+            setMedia(prev => [...prev, savedMedia]);
           };
           reader.readAsDataURL(file);
         }
@@ -293,10 +340,8 @@ export default function HomePage() {
     }
   };
 
-  // 用户管理功能
-  const addUser = () => {
-    const newUser: User = {
-      id: Date.now().toString(),
+  const addUser = async () => {
+    const newUser = {
       name: `用户${users.length + 1}`,
       workoutDays: [
         { id: '1', name: '星期一', items: [] },
@@ -308,99 +353,132 @@ export default function HomePage() {
         { id: '7', name: '星期日', items: [] },
       ],
     };
-    const newUsers = [...users, newUser];
-    setUsers(newUsers);
-    localStorage.setItem('fitness-users', JSON.stringify(newUsers));
+
+    const response = await fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newUser),
+    });
+    const savedUser = await response.json();
+    setUsers([...users, savedUser]);
+    setSelectedUser(savedUser._id);
   };
 
-  const deleteUser = (userId: string) => {
-    const newUsers = users.filter(user => user.id !== userId);
+  const deleteUser = async (userId: string) => {
+    await fetch(`/api/users?id=${userId}`, {
+      method: 'DELETE'
+    });
+
+    const newUsers = users.filter(user => user._id !== userId);
     setUsers(newUsers);
-    localStorage.setItem('fitness-users', JSON.stringify(newUsers));
     
-    // 如果删除的是当前选中的用户，切换到第一个用户
     if (selectedUser === userId) {
-      setSelectedUser(newUsers[0].id);
-      localStorage.setItem('fitness-selected-user', newUsers[0].id);
-      // 清除选中的训练项目
+      setSelectedUser(newUsers[0]._id);
       setSelectedItem(null);
-      localStorage.removeItem('fitness-selected-item');
     }
     
     setDeleteUserConfirm(null);
   };
 
-  const startEditingUser = (userId: string, name: string) => {
-    setEditingUser(userId);
-    setEditingName(name);
-  };
-
-  const saveUserEdit = () => {
+  const saveUserEdit = async () => {
     if (!editingUser) return;
-    const newUsers = users.map(user => 
-      user.id === editingUser ? { ...user, name: editingName } : user
-    );
-    setUsers(newUsers);
-    localStorage.setItem('fitness-users', JSON.stringify(newUsers));
+    const updatedUser = users.find(user => user._id === editingUser);
+    if (!updatedUser) return;
+
+    const response = await fetch('/api/users', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...updatedUser, name: editingName }),
+    });
+    const savedUser = await response.json();
+
+    setUsers(users.map(user => 
+      user._id === editingUser ? savedUser : user
+    ));
     setEditingUser(null);
     setEditingName('');
   };
 
-  // 训练日管理功能
-  const addWorkoutItem = (dayId: string) => {
-    const newUsers = users.map(user => {
-      if (user.id === selectedUser) {
-        return {
-          ...user,
-          workoutDays: user.workoutDays.map(day => {
-            if (day.id === dayId) {
-              return {
-                ...day,
-                items: [...day.items, { id: Date.now().toString(), name: '项目名称' }],
-              };
-            }
-            return day;
-          }),
-        };
+  const addWorkoutItem = async (dayId: string) => {
+    if (!currentUser) return;
+
+    const newItem = {
+      id: Date.now().toString(),
+      name: '新项目'
+    };
+
+    try {
+      const updatedWorkoutDays = currentUser.workoutDays.map(day => {
+        if (day.id === dayId) {
+          return {
+            ...day,
+            items: [...(day.items || []), newItem]
+          };
+        }
+        return day;
+      });
+
+      const updatedUser = {
+        ...currentUser,
+        workoutDays: updatedWorkoutDays
+      };
+
+      const response = await fetch('/api/users', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updatedUser),
+      });
+
+      if (!response.ok) {
+        throw new Error('更新失败');
       }
-      return user;
-    });
-    setUsers(newUsers);
-    localStorage.setItem('fitness-users', JSON.stringify(newUsers));
+
+      const savedUser = await response.json();
+      setUsers(prev => prev.map(u => u._id === currentUser._id ? savedUser : u));
+      setCurrentUser(savedUser);
+    } catch (error) {
+      console.error('添加项目失败:', error);
+      alert('添加项目失败，请重试');
+    }
   };
 
-  // 修改删除训练项目的函数
-  const deleteWorkoutItem = (dayId: string, itemId: string) => {
-    const newUsers = users.map(user => {
-      if (user.id === selectedUser) {
-        return {
-          ...user,
-          workoutDays: user.workoutDays.map(day => {
-            if (day.id === dayId) {
-              return {
-                ...day,
-                items: day.items.filter(item => item.id !== itemId),
-              };
-            }
-            return day;
-          }),
-        };
-      }
-      return user;
+  const deleteWorkoutItem = async (dayId: string, itemId: string) => {
+    const currentUser = users.find(user => user._id === selectedUser);
+    if (!currentUser) return;
+
+    const updatedUser = {
+      ...currentUser,
+      workoutDays: currentUser.workoutDays.map(day => {
+        if (day.id === dayId) {
+          return {
+            ...day,
+            items: day.items.filter(item => item.id !== itemId),
+          };
+        }
+        return day;
+      }),
+    };
+
+    const response = await fetch('/api/users', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedUser),
     });
-    setUsers(newUsers);
-    localStorage.setItem('fitness-users', JSON.stringify(newUsers));
+    const savedUser = await response.json();
+
+    setUsers(users.map(user => 
+      user._id === selectedUser ? savedUser : user
+    ));
     
-    // 如果删除的是当前选中的项目，清除选中状态
-    if (selectedItem?.dayId === dayId && selectedItem?.itemId === itemId) {
+    if (selectedItem === itemId) {
       setSelectedItem(null);
-      localStorage.removeItem('fitness-selected-item');
     }
     
     setDeleteConfirm(null);
   };
 
-  // 媒体处理功能
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -438,8 +516,6 @@ export default function HomePage() {
     });
   };
 
-  const currentUser = users.find(user => user.id === selectedUser);
-
   const handleImageClick = (id: string) => {
     const imageIndex = media.findIndex(m => m.id === id);
     setCurrentImageIndex(imageIndex);
@@ -464,7 +540,6 @@ export default function HomePage() {
     setCurrentImageIndex(nextIndex);
   };
 
-  // 添加密码验证函数
   const verifyPassword = () => {
     if (passwordModal.password === '111222') {
       setIsAuthenticated(true);
@@ -475,7 +550,11 @@ export default function HomePage() {
     }
   };
 
-  // 如果未认证，显示密码验证界面
+  const startEditingUser = (user: User) => {
+    setEditingUser(user._id);
+    setEditingName(user.name);
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-100 to-amber-50 flex items-center justify-center font-['SF_Pro_SC','PingFang_SC','-apple-system','BlinkMacSystemFont','system-ui','Helvetica_Neue','Helvetica','Arial',sans-serif]">
@@ -507,7 +586,6 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-orange-100 to-amber-50 font-['SF_Pro_SC','PingFang_SC','-apple-system','BlinkMacSystemFont','system-ui','Helvetica_Neue','Helvetica','Arial',sans-serif]">
-      {/* 顶部标题 */}
       <div className="px-8 py-6 bg-gradient-to-r from-orange-500/10 to-amber-500/10 shadow-lg sticky top-0 z-10 border-b border-orange-200">
         <div className="flex justify-between items-center max-w-7xl mx-auto">
           <div className="flex items-center gap-4">
@@ -516,10 +594,10 @@ export default function HomePage() {
           <div className="flex items-center gap-3">
             {users.map((user) => (
               <div
-                key={user.id}
+                key={user._id}
                 className={`relative group`}
               >
-                {editingUser === user.id ? (
+                {editingUser === user._id ? (
                   <input
                     type="text"
                     value={editingName}
@@ -531,21 +609,21 @@ export default function HomePage() {
                   />
                 ) : (
                   <button
-                    onClick={() => setSelectedUser(user.id)}
+                    onClick={() => setSelectedUser(user._id)}
                     className={`px-5 py-2 text-sm font-medium rounded-full transition-all duration-300 shadow-sm
-                      ${selectedUser === user.id 
+                      ${selectedUser === user._id 
                         ? 'bg-gradient-to-r from-orange-600 to-amber-500 text-white shadow-orange-500/20' 
                         : 'bg-orange-50 text-gray-700 hover:bg-orange-100'}`}
                   >
                     {user.name}
                   </button>
                 )}
-                {selectedUser === user.id && (
+                {selectedUser === user._id && (
                   <div className="absolute right-0 top-full mt-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
                     <div className="flex gap-2 bg-white p-1.5 rounded-full shadow-lg">
                       <button
                         onClick={() => {
-                          startEditingUser(user.id, user.name);
+                          startEditingUser(user);
                         }}
                         className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-orange-100 transition-colors"
                       >
@@ -554,7 +632,7 @@ export default function HomePage() {
                       {users.length > 1 && (
                         <button
                           onClick={() => {
-                            setDeleteUserConfirm(user.id);
+                            setDeleteUserConfirm(user._id);
                           }}
                           className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-orange-100 transition-colors"
                         >
@@ -577,7 +655,6 @@ export default function HomePage() {
       </div>
 
       <div className="flex flex-1 overflow-hidden p-8 gap-8 max-w-7xl mx-auto w-full">
-        {/* 左侧训练计划区域 */}
         <div className="w-1/2 overflow-auto rounded-3xl bg-white shadow-xl">
           {currentUser?.workoutDays.map((day) => (
             <div key={day.id} className="border-b border-orange-100 last:border-b-0">
@@ -596,9 +673,9 @@ export default function HomePage() {
                   {day.items.map((item) => (
                     <div key={item.id} 
                       className={`flex items-center justify-between py-3.5 px-5 rounded-2xl bg-white mb-2 last:mb-0 group hover:bg-orange-50 transition-all duration-300 border ${
-                        selectedItem?.itemId === item.id ? 'border-orange-500' : 'border-orange-100'
+                        selectedItem === item.id ? 'border-orange-500' : 'border-orange-100'
                       } cursor-pointer`}
-                      onClick={() => setSelectedItem({ dayId: day.id, itemId: item.id })}
+                      onClick={() => setSelectedItem(item.id)}
                     >
                       {editingItem?.dayId === day.id && editingItem?.itemId === item.id ? (
                         <input
@@ -607,7 +684,7 @@ export default function HomePage() {
                           onChange={(e) => setEditingName(e.target.value)}
                           onBlur={() => {
                             const newUsers = users.map(u => {
-                              if (u.id === selectedUser) {
+                              if (u._id === selectedUser) {
                                 return {
                                   ...u,
                                   workoutDays: u.workoutDays.map(d => {
@@ -666,7 +743,6 @@ export default function HomePage() {
           ))}
         </div>
 
-        {/* 右侧媒体区域 */}
         <div className="w-1/2 rounded-3xl bg-white shadow-xl p-8">
           {selectedItem ? (
             <>
@@ -716,7 +792,6 @@ export default function HomePage() {
                 />
               </div>
 
-              {/* 视频区域 */}
               <div className="mb-8">
                 <h3 className="text-lg font-medium text-gray-800 mb-4">视频</h3>
                 <div className="grid grid-cols-1 gap-4">
@@ -724,7 +799,7 @@ export default function HomePage() {
                     const videos = media.filter(
                       item => item.type === 'video' && 
                       item.userId === selectedUser && 
-                      item.itemId === selectedItem.itemId
+                      item.itemId === selectedItem
                     );
                     return videos.length > 0 ? (
                       <div
@@ -781,12 +856,11 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* 图片区域 */}
               <div>
                 <h3 className="text-lg font-medium text-gray-800 mb-4">图片</h3>
                 <div className="grid grid-cols-3 gap-4">
                   {media
-                    .filter(item => item.type === 'image' && item.userId === selectedUser && item.itemId === selectedItem.itemId)
+                    .filter(item => item.type === 'image' && item.userId === selectedUser && item.itemId === selectedItem)
                     .map((item) => (
                       <div
                         key={item.id}
@@ -816,7 +890,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* 图片预览模态框 */}
       {selectedImage && (
         <div
           className="fixed inset-0 bg-black/90 backdrop-blur-2xl flex items-center justify-center z-50"
@@ -854,7 +927,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* 删除确认模态框 */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xl flex items-center justify-center z-50">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl">
@@ -880,7 +952,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* 媒体删除确认模态框 */}
       {deleteMediaConfirm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xl flex items-center justify-center z-50">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl">
@@ -906,13 +977,12 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* 用户删除确认模态框 */}
       {deleteUserConfirm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xl flex items-center justify-center z-50">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl">
             <h3 className="text-xl font-semibold text-gray-900 mb-4">确认删除</h3>
             <p className="text-gray-600 mb-8">
-              确定要删除{users.find(u => u.id === deleteUserConfirm)?.name}吗？
+              确定要删除{users.find(u => u._id === deleteUserConfirm)?.name}吗？
             </p>
             <div className="flex justify-end gap-4">
               <button
