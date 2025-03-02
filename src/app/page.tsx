@@ -107,31 +107,57 @@ const deleteMediaFromDB = async (id: string) => {
 };
 
 export default function HomePage() {
-  const [users, setUsers] = useState<User[]>(() => {
-    // 从 localStorage 读取用户数据
-    const savedUsers = localStorage.getItem('fitness-users');
-    return savedUsers ? JSON.parse(savedUsers) : [
-      {
-        id: '1',
-        name: '用户1',
-        workoutDays: [
-          { id: '1', name: '星期一', items: [] },
-          { id: '2', name: '星期二', items: [] },
-          { id: '3', name: '星期三', items: [] },
-          { id: '4', name: '星期四', items: [] },
-          { id: '5', name: '星期五', items: [] },
-          { id: '6', name: '星期六', items: [] },
-          { id: '7', name: '星期日', items: [] },
-        ],
-      },
-    ];
-  });
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const [users, setUsers] = useState<User[]>([
+    {
+      id: '1',
+      name: '用户1',
+      workoutDays: [
+        { id: '1', name: '星期一', items: [] },
+        { id: '2', name: '星期二', items: [] },
+        { id: '3', name: '星期三', items: [] },
+        { id: '4', name: '星期四', items: [] },
+        { id: '5', name: '星期五', items: [] },
+        { id: '6', name: '星期六', items: [] },
+        { id: '7', name: '星期日', items: [] },
+      ],
+    },
+  ]);
+
+  useEffect(() => {
+    if (isClient) {
+      const savedUsers = localStorage.getItem('fitness-users');
+      if (savedUsers) {
+        setUsers(JSON.parse(savedUsers));
+      }
+    }
+  }, [isClient]);
   
-  const [selectedUser, setSelectedUser] = useState<string>(() => {
-    // 从 localStorage 读取选中用户
-    const savedSelectedUser = localStorage.getItem('fitness-selected-user');
-    return savedSelectedUser || users[0].id;
-  });
+  const [selectedUser, setSelectedUser] = useState<string>('1');
+
+  useEffect(() => {
+    if (isClient) {
+      const savedSelectedUser = localStorage.getItem('fitness-selected-user');
+      if (savedSelectedUser) {
+        setSelectedUser(savedSelectedUser);
+      }
+    }
+  }, [isClient]);
+
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
+  useEffect(() => {
+    if (isClient) {
+      const isAuth = sessionStorage.getItem('fitness-authenticated') === 'true';
+      setIsAuthenticated(isAuth);
+    }
+  }, [isClient]);
+
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [editingItem, setEditingItem] = useState<{ dayId: string; itemId: string } | null>(null);
@@ -146,10 +172,6 @@ export default function HomePage() {
   const [deleteMediaConfirm, setDeleteMediaConfirm] = useState<DeleteMediaConfirm | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState<number>(0);
   const [deleteUserConfirm, setDeleteUserConfirm] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    // 从 sessionStorage 读取认证状态，这样刷新页面时不需要重新输入密码
-    return sessionStorage.getItem('fitness-authenticated') === 'true';
-  });
   const [passwordModal, setPasswordModal] = useState<PasswordModal>({
     isOpen: !isAuthenticated, // 如果未认证，显示密码模态框
     password: '',
@@ -675,6 +697,7 @@ export default function HomePage() {
               src={selectedImage}
               alt=""
               className="max-w-full max-h-[90vh] object-contain rounded-3xl shadow-2xl"
+              loading="lazy"
             />
             <button
               className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-full hover:bg-black/70 transition-all duration-300"
@@ -707,7 +730,7 @@ export default function HomePage() {
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl">
             <h3 className="text-xl font-semibold text-gray-900 mb-4">确认删除</h3>
             <p className="text-gray-600 mb-8">
-              确定要删除训练项目"{deleteConfirm.itemName}"吗？
+              确定要删除训练项目&quot;{deleteConfirm.itemName}&quot;吗？
             </p>
             <div className="flex justify-end gap-4">
               <button
