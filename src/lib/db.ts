@@ -1,16 +1,24 @@
 import mongoose from 'mongoose';
 
+declare global {
+  var mongoose: {
+    conn: typeof mongoose | null;
+    promise: Promise<typeof mongoose> | null;
+  } | undefined;
+}
+
 const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
   throw new Error('请在环境变量中设置 MONGODB_URI');
 }
 
-let cached = global.mongoose;
-
-if (!cached) {
-  cached = global.mongoose = { conn: null, promise: null };
+interface MongooseCache {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
 }
+
+let cached = (global.mongoose || { conn: null, promise: null }) as MongooseCache;
 
 async function dbConnect() {
   if (cached.conn) {
