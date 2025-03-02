@@ -128,51 +128,37 @@ export default function HomePage() {
   };
 
   const [users, setUsers] = useState<User[]>(() => {
-    if (typeof window !== 'undefined') {
-      const savedUsers = localStorage.getItem('fitness-users');
-      if (savedUsers) {
-        return JSON.parse(savedUsers);
-      }
-    }
-    return [defaultUser];
+    if (typeof window === 'undefined') return [defaultUser];
+    const savedUsers = localStorage.getItem('fitness-users');
+    return savedUsers ? JSON.parse(savedUsers) : [defaultUser];
   });
 
   const [selectedUser, setSelectedUser] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const savedSelectedUser = localStorage.getItem('fitness-selected-user');
-      if (savedSelectedUser) {
-        return savedSelectedUser;
-      }
-    }
-    return '1';
+    if (typeof window === 'undefined') return '1';
+    const savedSelectedUser = localStorage.getItem('fitness-selected-user');
+    return savedSelectedUser || '1';
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('fitness-authenticated') === 'true';
-    }
-    return false;
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('fitness-authenticated') === 'true';
   });
 
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [editingItem, setEditingItem] = useState<{ dayId: string; itemId: string } | null>(null);
   const [selectedItem, setSelectedItem] = useState<{ dayId: string; itemId: string } | null>(() => {
-    if (typeof window !== 'undefined') {
-      const savedSelectedItem = localStorage.getItem('fitness-selected-item');
-      return savedSelectedItem ? JSON.parse(savedSelectedItem) : null;
-    }
-    return null;
+    if (typeof window === 'undefined') return null;
+    const savedSelectedItem = localStorage.getItem('fitness-selected-item');
+    return savedSelectedItem ? JSON.parse(savedSelectedItem) : null;
   });
   const [activeTab, setActiveTab] = useState<'video' | 'image'>(() => {
-    if (typeof window !== 'undefined') {
-      const savedActiveTab = localStorage.getItem('fitness-active-tab');
-      return (savedActiveTab as 'video' | 'image') || 'video';
-    }
-    return 'video';
+    if (typeof window === 'undefined') return 'video';
+    const savedActiveTab = localStorage.getItem('fitness-active-tab');
+    return (savedActiveTab as 'video' | 'image') || 'video';
   });
   const [media, setMedia] = useState<Media[]>(() => {
-    // 从 localStorage 读取媒体数据
+    if (typeof window === 'undefined') return [];
     const savedMedia = localStorage.getItem('fitness-media');
     return savedMedia ? JSON.parse(savedMedia) : [];
   });
